@@ -1,6 +1,7 @@
 services:
   themes:
     image: epam/ai-dial-chat-themes:development
+    platform: linux/amd64
     ports:
       - "3001:8080"
 
@@ -8,7 +9,7 @@ services:
     ports:
       - "3000:3000"
     image: epam/ai-dial-chat:development
-#    platform: linux/amd64
+    platform: linux/amd64
     depends_on:
       - themes
       - core
@@ -16,9 +17,31 @@ services:
       NEXTAUTH_SECRET: "secret"
       THEMES_CONFIG_HOST: "http://themes:8080"
       DIAL_API_HOST: "http://core:8080"
-      DIAL_API_KEY: "dial_api_key"
+      DIAL_API_KEY: ""
       ENABLED_FEATURES: "conversations-section,prompts-section,top-settings,top-clear-conversation,top-chat-info,top-chat-model-settings,empty-chat-settings,header,footer,request-api-key,report-an-issue,likes,conversations-sharing,prompts-sharing,input-files,attachments-manager,conversations-publishing,prompts-publishing,custom-logo,input-links,custom-applications,message-templates,marketplace,quick-apps,code-apps,mindmap-apps"
       KEEP_ALIVE_TIMEOUT: ${CHAT_KEEP_ALIVE_TIMEOUT:-20000}
+
+  # chat:
+  #   ports:
+  #     - "3000:3000"
+  #   image: epam/ai-dial-chat:latest
+  #   platform: linux/amd64
+  #   restart: unless-stopped
+  #   depends_on:
+  #     themes:
+  #       condition: service_started
+  #     core:
+  #       condition: service_healthy
+  #   environment:
+  #     NEXTAUTH_SECRET: "secret"
+  #     NEXTAUTH_URL: ${NEXTAUTH_URL:-http://localhost:3000}
+  #     THEMES_CONFIG_HOST: "http://themes:8080"
+  #     DIAL_API_HOST: "http://core:8080"
+  #     DIAL_API_KEY: "dial_api_key"
+  #     NODE_OPTIONS: "--max-http-header-size=32768 --max-old-space-size=${CHAT_MAX_OLD_SPACE_SIZE_MB:-1024}"
+  #     ENABLED_FEATURES: "conversations-section,prompts-section,top-settings,top-clear-conversation,top-chat-info,top-chat-model-settings,empty-chat-settings,header,footer,request-api-key,report-an-issue,likes,conversations-sharing,prompts-sharing,input-files,attachments-manager,conversations-publishing,prompts-publishing,custom-logo,input-links,custom-applications,message-templates,marketplace,quick-apps,code-apps,mindmap-apps"
+  #     KEEP_ALIVE_TIMEOUT: ${CHAT_KEEP_ALIVE_TIMEOUT:-20000}
+  #   mem_limit: ${CHAT_MEM_LIMIT:-1536M}
 
   redis:
     image: redis:7.2.4-alpine3.19
@@ -46,25 +69,29 @@ services:
     ports:
       - "8080:8080"
     image: epam/ai-dial-core:development
+    platform: linux/amd64
+    restart: unless-stopped
     environment:
       'AIDIAL_SETTINGS': '/opt/settings/settings.json'
-      'JAVA_OPTS': '-Dgflog.config=/opt/settings/gflog.xml'
+      'JAVA_OPTS': '-Dgflog.config=/opt/settings/gflog.xml -XX:InitialRAMPercentage=${CORE_INITIAL_RAM_PERCENTAGE:-10.0} -XX:MaxRAMPercentage=${CORE_MAX_RAM_PERCENTAGE:-50.0}'
       'LOG_DIR': '/app/log'
       'STORAGE_DIR': '/app/data'
       'aidial.config.files': '["/opt/config/config.json"]'
       'aidial.storage.overrides': '{ "jclouds.filesystem.basedir": "data" }'
       'aidial.redis.singleServerConfig.address': 'redis://redis:6379'
       'LOG_LEVEL': "DEBUG"
+    mem_limit: ${CORE_MEM_LIMIT:-1536M}
     depends_on:
       - redis
     volumes:
       - ./settings:/opt/settings
       - ${DIAL_DIR:-.}/core:/opt/config
-      - ${DIAL_DIR:-.}/core-logs/:/app/log
-      - ${DIAL_DIR:-.}/core-data/:/app/data
+      - core-logs:/app/log
+      - core-data:/app/data
 
   adapter-dial:
     image: epam/ai-dial-adapter-dial:development
+    # platform: linux/amd64
     environment:
       DIAL_URL: "http://core:8080"
       LOG_LEVEL: "INFO"
@@ -72,6 +99,7 @@ services:
 # UMS
   userservice:
     image: khshanovskyi/mockuserservice:latest
+    # platform: linux/amd64
     ports:
       - "8040:8000"
     environment:
@@ -98,11 +126,12 @@ services:
       - redis
       - ums-mcp-server
     image: khshanovskyi/dial-ums-agent:latest
+    # platform: linux/amd64
     ports:
       - "8042:8000"
     environment:
       - UMS_MCP_URL=http://ums-mcp-server:8005/mcp
-      - DIAL_API_KEY=${DIAL_API_KEY}
+      - DIAL_API_KEY=
       - ORCHESTRATION_MODEL=gpt-4o
       - DIAL_URL=https://ai-proxy.lab.epam.com
       - REDIS_HOST=redis
@@ -114,6 +143,7 @@ services:
 # General-purpose Agent
   python-interpreter-mcp-server:
     image: khshanovskyi/python-code-interpreter-mcp-server:latest
+    # platform: linux/amd64
     ports:
       - "8050:8000"
     environment:
@@ -124,6 +154,7 @@ services:
 
   ddg-search-mcp-server:
     image: khshanovskyi/ddg-mcp-server:latest
+    # platform: linux/amd64
     ports:
       - "8051:8000"
     environment:
@@ -142,10 +173,14 @@ services:
     ports:
       - "8052:5000"
     environment:
-      - DIAL_API_KEY=${DIAL_API_KEY}
+      - DIAL_API_KEY=
       - DEPLOYMENT_NAME=gpt-4o
       - DIAL_ENDPOINT=http://core:8080
       - PYINTERPRETER_MCP_URL=http://python-interpreter-mcp-server:8000/mcp
       - DDG_MCP_URL=http://ddg-search-mcp-server:8000/mcp
     volumes:
       - ./data:/app/data
+
+volumes:
+  core-logs:
+  core-data:
